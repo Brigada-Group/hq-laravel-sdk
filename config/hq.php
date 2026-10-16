@@ -29,9 +29,10 @@ return [
         FILTER_VALIDATE_BOOL
     ),
 
-    // true: a queued job on the default connection (retries, never slows the response).
-    // false: sent synchronously after the response (app()->terminating).
-    'queue' => filter_var(env('BRIGADA_HQ_QUEUE', true), FILTER_VALIDATE_BOOL),
+    // false (default): no queue worker needed. A web request sends after the response has gone to the visitor; artisan, the
+    // scheduler and queue workers send at once (5-second timeout).
+    // true: a queued job on the default connection, with retries. Only for apps whose queue workers are always running.
+    'queue' => filter_var(env('BRIGADA_HQ_QUEUE', false), FILTER_VALIDATE_BOOL),
     'queue_name' => env('BRIGADA_HQ_QUEUE_NAME'),
 
     // Not reported. HttpException with a status below 500 is always skipped as well.

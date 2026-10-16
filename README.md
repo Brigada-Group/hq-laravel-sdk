@@ -30,12 +30,12 @@ The package registers itself (Laravel auto-discovery) and hooks the exception ha
 | `BRIGADA_HQ_ENV` | `APP_ENV` | HQ opens tickets for the source's ticket environments (default `production`). |
 | `BRIGADA_HQ_RELEASE` | git sha of `HEAD` | Read from `.git`; set it in Docker builds without `.git`. A closed ticket reopens as "came back in <release>". |
 | `BRIGADA_HQ_SEND_LOCAL` | false | Off in `local` and `testing` unless true. `BRIGADA_HQ_ENABLED` forces it either way. |
-| `BRIGADA_HQ_QUEUE` | true | true: a queued job on the default connection. false: sent after the response. |
+| `BRIGADA_HQ_QUEUE` | false | No queue worker needed by default: a web request sends after the response has gone to the visitor; artisan, the scheduler and queue workers send at once (5-second timeout). `true` sends through a queued job with retries, only for apps whose workers always run. |
 | `BRIGADA_HQ_HEARTBEAT` | true | `hq:heartbeat` every 5 minutes through the scheduler (needs `schedule:run`). HQ lists apps that stopped reporting. |
 | config `ignore` | validation, auth, 404, model-not-found, ... | Plus every HTTP exception with a status below 500. |
 | config `dedupe_minutes` | 5 | The same exception (class, file, line) is counted, not resent; the count rides on the next one as `tags.repeats`. |
 
-Delivery: 5-second timeout, `202` is success, `429` is released back to the queue for `Retry-After`, `5xx` and network errors retry 3 times (5 s, 30 s), `401/403` log one warning an hour and stop. Reporting never throws into your app and never reports its own failures.
+Delivery: 5-second timeout, `202` is success; with `BRIGADA_HQ_QUEUE=true`, `429` is released back to the queue for `Retry-After` and `5xx` and network errors retry 3 times (5 s, 30 s); `401/403` log one warning an hour and stop. Reporting never throws into your app and never reports its own failures.
 
 ## Commands
 

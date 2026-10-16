@@ -220,6 +220,19 @@ class HqTest extends TestCase
         Queue::assertPushed(SendBatch::class, 1); // assertPushedTimes is Laravel 12+
     }
 
+    public function test_no_queue_by_default_and_console_sends_at_once(): void
+    {
+        Http::fake(['*' => Http::response(['accepted' => 1, 'dropped' => 0], 202)]);
+        Queue::fake();
+        $this->assertFalse(filter_var(env('BRIGADA_HQ_QUEUE', false), FILTER_VALIDATE_BOOL));
+        // artisan, the scheduler, a queue worker: no wait for the app to end (a worker may run for days)
+        Hq::$console = true;
+        $this->app->make(Hq::class)->report(new \RuntimeException('from a command'));
+        Http::assertSentCount(1);
+        Queue::assertNothingPushed();
+        Hq::$console = false;
+    }
+
     public function test_handler_reportable_hook_reports_through_the_exception_handler(): void
     {
         Http::fake(['*' => Http::response(['accepted' => 1, 'dropped' => 0], 202)]);

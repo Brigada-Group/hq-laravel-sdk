@@ -20,6 +20,7 @@ abstract class TestCase extends Orchestra
         $app['config']->set('hq.url', 'https://hq.test');
         $app['config']->set('hq.enabled', true);
         $app['config']->set('hq.queue', false);
+        \Brigada\Hq\Hq::$console = false; // PHPUnit runs in the console; most tests describe a web request
         $app['config']->set('hq.environment', 'production');
         $app['config']->set('hq.release', 'abc1234');
         $app['config']->set('cache.default', 'array');

@@ -12,7 +12,7 @@ use Throwable;
 
 class Hq
 {
-    public const VERSION = '0.1.1';
+    public const VERSION = '0.1.2';
 
     public const SDK_NAME = 'brigada/hq-sdk';
 
@@ -96,10 +96,14 @@ class Hq
         }
     }
 
+    /** Tests only: force the web (false) or console (true) path; null = ask Laravel. */
+    public static ?bool $console = null;
+
     /** @param list<array<string, mixed>> $events */
     public function dispatch(array $events): void
     {
-        if (config('hq.queue', true)) {
+        // Opt-in only (BRIGADA_HQ_QUEUE=true): an app without a running queue worker would hold its errors in the queue forever.
+        if (config('hq.queue', false)) {
             $job = new SendBatch($events);
             if ($name = config('hq.queue_name')) {
                 $job->onQueue($name);
@@ -108,7 +112,7 @@ class Hq
 
             return;
         }
-        app()->terminating(function () use ($events): void {
+        $send = function () use ($events): void {
             try {
                 $delivery = app(Transport::class)->send($events);
                 if ($delivery->refused()) {
@@ -116,7 +120,15 @@ class Hq
                 }
             } catch (Throwable) {
             }
-        });
+        };
+        // Console (artisan, the scheduler, queue workers): send now. A worker can run for days, so "when the app terminates" would be never.
+        if (self::$console ?? app()->runningInConsole()) {
+            $send();
+
+            return;
+        }
+        // A web request: after the response is sent (PHP-FPM has already flushed it to the visitor), so it costs the visitor nothing.
+        app()->terminating($send);
     }
 
     /** One warning per hour, so a wrong key does not fill the log. */
