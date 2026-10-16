@@ -1,0 +1,47 @@
+<?php
+
+namespace Brigada\Hq;
+
+use Brigada\Hq\Commands\HeartbeatCommand;
+use Brigada\Hq\Commands\InstallCommand;
+use Brigada\Hq\Commands\TestCommand;
+use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Contracts\Debug\ExceptionHandler;
+use Illuminate\Support\ServiceProvider;
+use Throwable;
+
+class HqServiceProvider extends ServiceProvider
+{
+    public function register(): void
+    {
+        $this->mergeConfigFrom(__DIR__.'/../config/hq.php', 'hq');
+        $this->app->singleton(Hq::class);
+        $this->app->singleton(Transport::class);
+    }
+
+    public function boot(): void
+    {
+        if ($this->app->runningInConsole()) {
+            $this->publishes([__DIR__.'/../config/hq.php' => config_path('hq.php')], 'hq-config');
+            $this->commands([InstallCommand::class, TestCommand::class, HeartbeatCommand::class]);
+        }
+
+        // HTTP, queue jobs and console all end up in the exception handler's report().
+        $this->callAfterResolving(ExceptionHandler::class, function ($handler): void {
+            if (method_exists($handler, 'reportable')) {
+                $handler->reportable(function (Throwable $e): void {
+                    try {
+                        $this->app->make(Hq::class)->report($e);
+                    } catch (Throwable) {
+                    }
+                });
+            }
+        });
+
+        $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
+            if (config('hq.heartbeat') && app(Hq::class)->enabled()) {
+                $schedule->command('hq:heartbeat')->everyFiveMinutes()->runInBackground();
+            }
+        });
+    }
+}

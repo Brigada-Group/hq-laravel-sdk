@@ -1,0 +1,43 @@
+{
+    "name": "brigada/hq-sdk",
+    "description": "Report Laravel errors to Brigada HQ: one ticket per new bug. A fork of Guardian, trimmed to errors and a heartbeat.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["laravel", "errors", "exceptions", "monitoring", "brigada"],
+    "require": {
+        "php": "^8.2",
+        "illuminate/support": "^11.0|^12.0",
+        "illuminate/console": "^11.0|^12.0",
+        "illuminate/http": "^11.0|^12.0",
+        "illuminate/queue": "^11.0|^12.0",
+        "illuminate/cache": "^11.0|^12.0",
+        "illuminate/contracts": "^11.0|^12.0",
+        "symfony/http-kernel": "^7.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^9.0|^10.0",
+        "phpunit/phpunit": "^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Brigada\\Hq\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Brigada\\Hq\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Brigada\\Hq\\HqServiceProvider"
+            ]
+        }
+    },
+    "scripts": {
+        "test": "vendor/bin/phpunit"
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
