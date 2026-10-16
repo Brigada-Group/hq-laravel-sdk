@@ -6,9 +6,20 @@
 
 $env = env('APP_ENV', 'production');
 $key = env('BRIGADA_HQ_KEY');
+$publicKey = env('BRIGADA_HQ_PUBLIC_KEY');
 $local = in_array($env, ['local', 'testing'], true);
 
 return [
+    // The source's PUBLIC key (bhq_pk_...) for the browser script. Safe in the page: HQ accepts browser errors with it only from
+    // the origins you allowed in HQ. Never put the secret key (bhq_sk_) here.
+    'public_key' => $publicKey,
+
+    // Serve the browser script and render @brigadaHqScript. Default: on when a public key is set.
+    'browser' => filter_var(env('BRIGADA_HQ_BROWSER', filled($publicKey)), FILTER_VALIDATE_BOOL),
+
+    // Render the browser script in local/testing too.
+    'send_local' => filter_var(env('BRIGADA_HQ_SEND_LOCAL', false), FILTER_VALIDATE_BOOL),
+
     // The source's secret key from HQ (Project -> Errors -> Connect an app): bhq_sk_...
     'key' => $key,
 

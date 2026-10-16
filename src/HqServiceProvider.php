@@ -7,6 +7,9 @@ use Brigada\Hq\Commands\InstallCommand;
 use Brigada\Hq\Commands\TestCommand;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Debug\ExceptionHandler;
+use Brigada\Hq\Http\BrowserScriptController;
+use Illuminate\Support\Facades\Blade;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Throwable;
 
@@ -21,6 +24,10 @@ class HqServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // Registered outside the `web` group: no session, no cookie, no CSRF. A closure-free controller keeps route:cache working.
+        Route::get('/_brigada-hq/browser.js', BrowserScriptController::class)->name('brigada-hq.browser');
+        Blade::directive('brigadaHqScript', fn () => '<?php echo app(\Brigada\Hq\Hq::class)->scriptTag(); ?>');
+
         if ($this->app->runningInConsole()) {
             $this->publishes([__DIR__.'/../config/hq.php' => config_path('hq.php')], 'hq-config');
             $this->commands([InstallCommand::class, TestCommand::class, HeartbeatCommand::class]);

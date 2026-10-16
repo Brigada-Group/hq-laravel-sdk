@@ -21,11 +21,50 @@ Check it: `php artisan hq:test` throws a test exception and prints `Sent, check 
 
 The package registers itself (Laravel auto-discovery) and hooks the exception handler's `reportable()`, so HTTP requests, queue jobs and artisan commands are all covered. Nothing else to wire up.
 
+## Browser errors (optional)
+
+The package also ships HQ's browser script (a copy of `dist/browser.global.js` from `@brigada/hq-sdk`, generated: do not edit
+`resources/js/hq-browser.js`). In HQ, Connect an app also gives a **public key** (`bhq_pk_...`). Put it in `.env` and add one Blade line
+inside `<head>` of your layout (for Inertia, `resources/views/app.blade.php`):
+
+```
+BRIGADA_HQ_PUBLIC_KEY=bhq_pk_...
+```
+
+```blade
+@brigadaHqScript
+```
+
+The package serves the script itself at `/_brigada-hq/browser.js?v=<version>` (route `brigada-hq.browser`, no session, no cookie, cached
+for a year because the version is in the URL), so there is nothing to build. The tag carries the key, HQ's URL, the environment and
+the release as `data-*` attributes and the script starts itself; it also gets a CSP `nonce` when `Vite::useCspNonce()` is in use. The
+directive renders nothing when `BRIGADA_HQ_BROWSER=false`, when there is no public key, or in `local`/`testing` unless
+`BRIGADA_HQ_SEND_LOCAL=true`. If your root view is built another way: `{!! \Brigada\Hq\Facades\Hq::scriptTag() !!}`.
+
+Optional framework hooks (the script defines `window.BrigadaHq`):
+
+```js
+// Vue 3: also report errors thrown inside components
+app.use(window.BrigadaHq?.hqVuePlugin ?? { install() {} });
+
+// React: in your error boundary
+componentDidCatch(error, info) { window.BrigadaHq?.captureReactError(error, info); }
+```
+
+Sent from a browser: the message, the stack frames (file paths relative to your site, line, column, function), the page URL **without
+its query string or fragment**, the browser name and version (HQ reads them from the User-Agent), environment and release. Not sent:
+a user, cookies, request bodies or form values. HQ does not store the visitor's IP address. Noise such as `ResizeObserver loop ...`
+and errors from browser extensions is dropped in the browser. The public key is safe to show in the page: HQ accepts browser errors
+with it only from the origins you allowed for the source, and it cannot read anything. Never put the secret key (`bhq_sk_`) in a
+page; the directive refuses to print anything that does not start with `bhq_pk_`.
+
 ## Options (`config/hq.php`, mostly env)
 
 | Env | Default | |
 |---|---|---|
 | `BRIGADA_HQ_KEY` | none | The source's secret key. No key, nothing is sent. |
+| `BRIGADA_HQ_PUBLIC_KEY` | none | The public key (`bhq_pk_...`) for the browser script. |
+| `BRIGADA_HQ_BROWSER` | true when a public key is set | Serve the script and render `@brigadaHqScript`. |
 | `BRIGADA_HQ_URL` | `https://hq.brigada.dev` | |
 | `BRIGADA_HQ_ENV` | `APP_ENV` | HQ opens tickets for the source's ticket environments (default `production`). |
 | `BRIGADA_HQ_RELEASE` | git sha of `HEAD` | Read from `.git`; set it in Docker builds without `.git`. A closed ticket reopens as "came back in <release>". |
@@ -39,7 +78,7 @@ Delivery: 5-second timeout, `202` is success; with `BRIGADA_HQ_QUEUE=true`, `429
 
 ## Commands
 
-- `php artisan hq:install` publishes the config, prints the `.env` lines and checks the key format.
+- `php artisan hq:install` publishes the config, prints the `.env` lines and the Blade line, and checks both key formats.
 - `php artisan hq:test` reports a test exception now and prints HQ's answer.
 - `php artisan hq:heartbeat` sends one heartbeat (scheduled for you).
 
