@@ -1,6 +1,6 @@
 # brigada/hq-sdk
 
-Report your Laravel app's errors to [Brigada HQ](https://hq.brigada.dev). A new bug opens one ticket for the project's responsible person; the same bug only counts. Laravel 11 and 12, PHP 8.2+.
+Report your Laravel app's errors to [Brigada HQ](https://hq.brigada.dev). A new bug opens one ticket for the project's responsible person; the same bug only counts. Laravel 11, 12 and 13, PHP 8.2+.
 
 This package is a fork of **Guardian**, written by Dren (`Brigada-Group/guardian`). The exception capture, the stack-trace redaction, the 5-minute de-duplication, the queued sending and the install command all come from there. It is trimmed to errors and a heartbeat and speaks HQ's own ingest protocol (v1); Discord, the dashboard, the other monitors and the hub client are gone. Thank you, Dren.
 

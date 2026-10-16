@@ -217,7 +217,7 @@ class HqTest extends TestCase
         Http::assertNothingSent(); // not before the response is done
         $this->app->terminate();
         Http::assertSentCount(1);
-        Queue::assertPushedTimes(SendBatch::class, 1);
+        Queue::assertPushed(SendBatch::class, 1); // assertPushedTimes is Laravel 12+
     }
 
     public function test_handler_reportable_hook_reports_through_the_exception_handler(): void

@@ -12,7 +12,7 @@ use Throwable;
 
 class Hq
 {
-    public const VERSION = '0.1.0';
+    public const VERSION = '0.1.1';
 
     public const SDK_NAME = 'brigada/hq-sdk';
 
