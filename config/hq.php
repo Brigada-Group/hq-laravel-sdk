@@ -5,7 +5,8 @@
  */
 
 $env = env('APP_ENV', 'production');
-$key = env('BRIGADA_HQ_KEY');
+// Laravel requires this file inside mergeConfigFrom(); keep its $key namespace parameter intact.
+$hqKey = env('BRIGADA_HQ_KEY');
 $publicKey = env('BRIGADA_HQ_PUBLIC_KEY');
 $local = in_array($env, ['local', 'testing'], true);
 
@@ -21,7 +22,7 @@ return [
     'send_local' => filter_var(env('BRIGADA_HQ_SEND_LOCAL', false), FILTER_VALIDATE_BOOL),
 
     // The source's secret key from HQ (Project -> Errors -> Connect an app): bhq_sk_...
-    'key' => $key,
+    'key' => $hqKey,
 
     // Where HQ lives. Leave the default unless Brigada tells you otherwise.
     'url' => env('BRIGADA_HQ_URL', 'https://hq.brigada.dev'),
@@ -36,7 +37,7 @@ return [
     // Reporting is on when a key is set and the app is not running locally or in tests.
     // BRIGADA_HQ_SEND_LOCAL=true sends from local/testing too; BRIGADA_HQ_ENABLED forces it either way.
     'enabled' => filter_var(
-        env('BRIGADA_HQ_ENABLED', filled($key) && (! $local || filter_var(env('BRIGADA_HQ_SEND_LOCAL', false), FILTER_VALIDATE_BOOL))),
+        env('BRIGADA_HQ_ENABLED', filled($hqKey) && (! $local || filter_var(env('BRIGADA_HQ_SEND_LOCAL', false), FILTER_VALIDATE_BOOL))),
         FILTER_VALIDATE_BOOL
     ),
 
