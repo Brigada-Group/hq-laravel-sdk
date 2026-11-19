@@ -6,6 +6,7 @@ use Brigada\Hq\Commands\HeartbeatCommand;
 use Brigada\Hq\Commands\InstallCommand;
 use Brigada\Hq\Commands\TestCommand;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Contracts\Foundation\CachesConfiguration;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Brigada\Hq\Http\BrowserScriptController;
 use Illuminate\Support\Facades\Blade;
@@ -17,9 +18,43 @@ class HqServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        $this->mergeConfigFrom(__DIR__.'/../config/hq.php', 'hq');
+        $this->mergeDefaultConfig();
         $this->app->singleton(Hq::class);
         $this->app->singleton(Transport::class);
+    }
+
+    /**
+     * The package defaults under "hq", the app's own config/hq.php winning. Not mergeConfigFrom(): it requires the file inside its
+     * own scope, where a variable the file assigns (such as $key) replaces its argument; with $key overwritten the whole app config
+     * once ended up under "hq" (and hq.queue became truthy). The file is required in a scope of its own here.
+     */
+    private function mergeDefaultConfig(): void
+    {
+        if ($this->app instanceof CachesConfiguration && $this->app->configurationIsCached()) {
+            return;
+        }
+        $config = $this->app->make('config');
+        $published = $config->get('hq', []);
+        $config->set('hq', array_merge($this->defaults(), is_array($published) ? $published : []));
+    }
+
+    /** The package's defaults file. A method so a test can point it at a file that assigns the merge scope's variables. */
+    protected function defaultConfigPath(): string
+    {
+        return __DIR__.'/../config/hq.php';
+    }
+
+    /**
+     * The defaults, required in an empty scope: the closure takes the path through func_get_arg, so not even a $path variable is in
+     * scope for the file to overwrite.
+     *
+     * @return array<string, mixed>
+     */
+    private function defaults(): array
+    {
+        return (static function (): array {
+            return require func_get_arg(0);
+        })($this->defaultConfigPath());
     }
 
     public function boot(): void

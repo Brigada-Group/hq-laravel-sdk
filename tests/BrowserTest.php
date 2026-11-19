@@ -113,4 +113,50 @@ class BrowserTest extends TestCase
         config(['hq.public_key' => null]);
         $this->artisan('hq:install')->expectsOutputToContain('stays off')->assertExitCode(0);
     }
+
+    /** Renders the directive while handling a request to $url routed through $uri. */
+    private function renderOn(string $url, ?string $uri = null, ?callable $define = null): string
+    {
+        $route = $uri !== null ? \Illuminate\Support\Facades\Route::get($uri, fn () => 'x') : null;
+        if ($define) {
+            $define($route);
+        }
+        $request = \Illuminate\Http\Request::create($url, 'GET');
+        if ($route) {
+            $route->bind($request);
+            $request->setRouteResolver(fn () => $route);
+        }
+        $this->app->instance('request', $request);
+
+        return Blade::render('@brigadaHqScript');
+    }
+
+    public function test_the_tag_carries_the_server_masked_page_url_and_the_route(): void
+    {
+        $html = $this->renderOn('https://shop.test/reset-password/TOKEN55?email=a@b.c', 'reset-password/{token}');
+
+        $this->assertStringContainsString('data-page-url="https://shop.test/reset-password/[redacted]"', $html);
+        $this->assertStringContainsString('data-route="/reset-password/{token}"', $html);
+        $this->assertStringNotContainsString('TOKEN55', $html);
+        $this->assertStringNotContainsString('email=', $html);
+    }
+
+    public function test_a_page_whose_url_cannot_be_made_safe_gets_the_none_sentinel(): void
+    {
+        $html = $this->renderOn('https://KEY9.shop.test/dashboard', null, function () {
+            \Illuminate\Support\Facades\Route::domain('{key}.shop.test')->get('dashboard', fn () => 'x');
+        });
+
+        $this->assertStringContainsString('data-page-url="none"', $html);
+        $this->assertStringNotContainsString('KEY9', $html);
+    }
+
+    public function test_a_page_with_no_matching_route_gets_the_root(): void
+    {
+        $html = $this->renderOn('https://shop.test/unknown/SECRETPATH');
+
+        $this->assertStringContainsString('data-page-url="https://shop.test"', $html);
+        $this->assertStringNotContainsString('data-route', $html);
+        $this->assertStringNotContainsString('SECRETPATH', $html);
+    }
 }

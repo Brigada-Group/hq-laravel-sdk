@@ -7,13 +7,14 @@ use Brigada\Hq\Jobs\SendBatch;
 use Brigada\Hq\Support\EventBuilder;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\HtmlString;
+use Brigada\Hq\Support\ConfigCheck;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Throwable;
 
 class Hq
 {
-    public const VERSION = '0.2.0';
+    public const VERSION = '0.3.0';
 
     public const SDK_NAME = 'brigada/hq-sdk';
 
@@ -58,6 +59,7 @@ class Hq
                 'data-environment' => config('hq.environment'),
                 'data-release' => config('hq.release') ?: \Brigada\Hq\Support\Release::fromGit(base_path()),
             ];
+            $attrs += $this->pageAttributes();
             $nonce = null;
             $vite = \Illuminate\Foundation\Vite::class;
             if (class_exists($vite) && method_exists($vite, 'cspNonce')) {
@@ -77,6 +79,27 @@ class Hq
         } catch (Throwable) {
             return new HtmlString('');
         }
+    }
+
+    /**
+     * The page's URL as the server would send it (secret route parameters masked, the query dropped; "none" when it cannot be made
+     * safe) and its route, so the browser script sends that instead of location.href while the page is still the one first loaded.
+     *
+     * @return array<string, string>
+     */
+    private function pageAttributes(): array
+    {
+        $request = app()->bound('request') ? app('request') : null;
+        if (! $request instanceof \Illuminate\Http\Request) {
+            return [];
+        }
+        $attrs = ['data-page-url' => \Brigada\Hq\Support\SecretPath::url($request) ?? 'none'];
+        $route = $request->route();
+        if ($route instanceof \Illuminate\Routing\Route) {
+            $attrs['data-route'] = '/'.ltrim($route->uri(), '/');
+        }
+
+        return $attrs;
     }
 
     /** Called from the exception handler. Never throws and never reports itself. */
@@ -160,6 +183,7 @@ class Hq
     {
         // Opt-in only (BRIGADA_HQ_QUEUE=true): an app without a running queue worker would hold its errors in the queue forever.
         if (config('hq.queue', false)) {
+            self::warnQueuedUpgrade();
             $job = new SendBatch($events);
             if ($name = config('hq.queue_name')) {
                 $job->onQueue($name);
@@ -185,6 +209,34 @@ class Hq
         }
         // A web request: after the response is sent (PHP-FPM has already flushed it to the visitor), so it costs the visitor nothing.
         app()->terminating($send);
+    }
+
+    /** Set once this process has looked at the published config (see warnQueuedUpgrade). */
+    private static bool $queueUpgradeChecked = false;
+
+    /**
+     * The upgrade trap (final review M2): from 0.3.0 a published config/hq.php is used, and one published by 0.1.0/0.1.1 queues by
+     * default, so after `composer update` every error can wait in a queue no worker runs, with hq:test and hq:install (the only other
+     * warnings) never run. The first error queued in a process looks at the published file; if it is that old file and the connection
+     * is not sync, the app's log gets one warning a day. Sending is not changed: the app may well run a worker, and a job that waits is
+     * not lost. Never throws.
+     */
+    private static function warnQueuedUpgrade(): void
+    {
+        if (self::$queueUpgradeChecked) {
+            return;
+        }
+        self::$queueUpgradeChecked = true;
+        try {
+            $connection = config('queue.default');
+            if ($connection === 'sync' || ! ConfigCheck::publishedWithOldQueueDefault()) {
+                return;
+            }
+            if (Cache::add('hq:warned:queue-upgrade', 1, 86400)) {
+                Log::warning('Brigada HQ: errors are queued on the "'.(is_string($connection) ? $connection : 'default').'" connection because config/hq.php was published by brigada/hq-sdk 0.1.0/0.1.1 (its queue default is true) and is used from 0.3.0 on. Without a worker that always runs they are not sent. Set BRIGADA_HQ_QUEUE=false, or re-publish it: php artisan vendor:publish --tag=hq-config --force (then re-apply your edits).');
+            }
+        } catch (Throwable) {
+        }
     }
 
     /** One warning per hour, so a wrong key does not fill the log. */

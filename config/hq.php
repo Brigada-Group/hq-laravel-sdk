@@ -5,7 +5,9 @@
  */
 
 $env = env('APP_ENV', 'production');
-$key = env('BRIGADA_HQ_KEY');
+// Never name a variable here $key, $path or $config. Before 0.3.0 this file was required inside Laravel's mergeConfigFrom($path,
+// $key), and its $key replaced that argument: with no BRIGADA_HQ_KEY the whole app config ended up under "hq".
+$secretKey = env('BRIGADA_HQ_KEY');
 $publicKey = env('BRIGADA_HQ_PUBLIC_KEY');
 $local = in_array($env, ['local', 'testing'], true);
 
@@ -21,7 +23,7 @@ return [
     'send_local' => filter_var(env('BRIGADA_HQ_SEND_LOCAL', false), FILTER_VALIDATE_BOOL),
 
     // The source's secret key from HQ (Project -> Errors -> Connect an app): bhq_sk_...
-    'key' => $key,
+    'key' => $secretKey,
 
     // Where HQ lives. Leave the default unless Brigada tells you otherwise.
     'url' => env('BRIGADA_HQ_URL', 'https://hq.brigada.dev'),
@@ -36,7 +38,7 @@ return [
     // Reporting is on when a key is set and the app is not running locally or in tests.
     // BRIGADA_HQ_SEND_LOCAL=true sends from local/testing too; BRIGADA_HQ_ENABLED forces it either way.
     'enabled' => filter_var(
-        env('BRIGADA_HQ_ENABLED', filled($key) && (! $local || filter_var(env('BRIGADA_HQ_SEND_LOCAL', false), FILTER_VALIDATE_BOOL))),
+        env('BRIGADA_HQ_ENABLED', filled($secretKey) && (! $local || filter_var(env('BRIGADA_HQ_SEND_LOCAL', false), FILTER_VALIDATE_BOOL))),
         FILTER_VALIDATE_BOOL
     ),
 
@@ -45,6 +47,11 @@ return [
     // true: a queued job on the default connection, with retries. Only for apps whose queue workers are always running.
     'queue' => filter_var(env('BRIGADA_HQ_QUEUE', false), FILTER_VALIDATE_BOOL),
     'queue_name' => env('BRIGADA_HQ_QUEUE_NAME'),
+
+    // Route parameters whose value is masked in the URL sent with an error (a reset token, an invite code, a verification hash):
+    // a parameter is masked when its name contains one of these, ignoring case. The route pattern is sent as it is. A list of
+    // your own replaces these; to add to them: array_merge(\Brigada\Hq\Support\SecretPath::DEFAULT_NAMES, ['otp']).
+    'secret_route_parameters' => ['token', 'code', 'hash', 'signature', 'secret', 'key', 'password'],
 
     // Not reported. HttpException with a status below 500 is always skipped as well.
     'ignore' => [

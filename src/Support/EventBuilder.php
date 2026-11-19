@@ -46,7 +46,8 @@ final class EventBuilder
         $event = self::base('error');
         $event['error'] = [
             'class' => mb_substr(get_class($e), 0, 255),
-            'message' => mb_substr(Redactor::text($e->getMessage()), 0, 4000),
+            // A database error is rebuilt without its bindings and its host first (QueryMessage).
+            'message' => mb_substr(Redactor::text(QueryMessage::of($e)), 0, 4000),
             'frames' => self::frames($e),
             'handled' => false,
         ];
@@ -112,10 +113,13 @@ final class EventBuilder
                 return null;
             }
             $request = app('request');
-            $req = [
-                'method' => mb_substr($request->method(), 0, 10),
-                'url' => mb_substr(Redactor::text(Redactor::stripUrl($request->url())), 0, 2048),
-            ];
+            $req = ['method' => mb_substr($request->method(), 0, 10)];
+            // Secret route parameters masked; no URL at all when that fails.
+            $url = SecretPath::url($request);
+            if ($url !== null) {
+                // A URL never holds a filesystem path: no base-path stripping (an empty base skips it).
+                $req['url'] = mb_substr(Redactor::text($url, ''), 0, 2048);
+            }
             $route = $request->route();
             if (is_object($route) && method_exists($route, 'uri')) {
                 $req['route'] = mb_substr((string) $route->uri(), 0, 255);

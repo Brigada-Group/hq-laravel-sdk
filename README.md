@@ -52,7 +52,12 @@ componentDidCatch(error, info) { window.BrigadaHq?.captureReactError(error, info
 ```
 
 Sent from a browser: the message, the stack frames (file paths relative to your site, line, column, function), the page URL **without
-its query string or fragment**, the browser name and version (HQ reads them from the User-Agent), environment and release. Not sent:
+its query string or fragment**, the browser name and version (HQ reads them from the User-Agent), environment and release. On the page
+as first loaded, the URL is the one the server would send, with secret route parameters masked, and the route goes with it: the tag
+carries them as `data-page-url` and `data-route` (`data-page-url="none"` when the URL cannot be made safe, and then none is sent).
+After client-side navigation (Inertia, Livewire `wire:navigate`) the browser sends the origin only (`https://shop.test`, no path and no
+route; nothing when the first page's URL was `none`). Stack frames that name the page itself (an inline `<script>`, an `onclick=`
+handler) get the masked URL too, or `<page>` after navigation. Not sent:
 a user, cookies, request bodies or form values. HQ does not store the visitor's IP address. Noise such as `ResizeObserver loop ...`
 and errors from browser extensions is dropped in the browser. The public key is safe to show in the page: HQ accepts browser errors
 with it only from the origins you allowed for the source, and it cannot read anything. Never put the secret key (`bhq_sk_`) in a
@@ -72,21 +77,44 @@ page; the directive refuses to print anything that does not start with `bhq_pk_`
 | `BRIGADA_HQ_QUEUE` | false | No queue worker needed by default: a web request sends after the response has gone to the visitor; artisan, the scheduler and queue workers send at once (5-second timeout). `true` sends through a queued job with retries, only for apps whose workers always run. |
 | `BRIGADA_HQ_HEARTBEAT` | true | `hq:heartbeat` every 5 minutes through the scheduler (needs `schedule:run`). HQ lists apps that stopped reporting. |
 | config `ignore` | validation, auth, 404, model-not-found, ... | Plus every HTTP exception with a status below 500. |
+| config `secret_route_parameters` | token, code, hash, signature, secret, key, password | Route parameters masked in the sent URL: a name containing one of these, any case. A list of your own replaces the defaults; to add to them use `array_merge(\Brigada\Hq\Support\SecretPath::DEFAULT_NAMES, ['otp'])`. |
 | config `dedupe_minutes` | 5 | The same exception (class, file, line) is counted, not resent; the count rides on the next one as `tags.repeats`. |
 
 Delivery: 5-second timeout, `202` is success; with `BRIGADA_HQ_QUEUE=true`, `429` is released back to the queue for `Retry-After` and `5xx` and network errors retry 3 times (5 s, 30 s); `401/403` log one warning an hour and stop. Reporting never throws into your app and never reports its own failures.
 
 ## Commands
 
-- `php artisan hq:install` publishes the config, prints the `.env` lines and the Blade line, and checks both key formats.
+- `php artisan hq:install` publishes the config (an existing `config/hq.php` is kept, and it says so), prints the `.env` lines and the Blade line, and checks both key formats.
 - `php artisan hq:test` reports a test exception now and prints HQ's answer.
+
+Both warn about settings that would lose errors without a word: `hq.queue` on with a queue connection other than `sync` (errors then
+need a running worker), and a `config/hq.php` published by 0.1.0/0.1.1 (it queues by default). Warnings never change the exit code.
 - `php artisan hq:heartbeat` sends one heartbeat (scheduled for you).
 
 ## What is sent, and what is not
 
-Sent: the exception class and message, the stack (file relative to the app root, line, `Class::method`, and whether it is your code or `vendor/`), the environment, release, server name, PHP and Laravel versions, and for a web request the method, the URL **without its query string**, the route pattern (`orders/{order}`) and the status. The user is the **id only** (`auth()->id()`).
+Sent: the exception class and message, the stack (file relative to the app root, line, `Class::method`, and whether it is your code or `vendor/`), the environment, release, server name, PHP and Laravel versions, and for a web request the method, the URL **without its query string** and with secret route parameters masked (`password/reset/[redacted]`; see below), the route pattern (`password/reset/{token}`) and the status. The user is the **id only** (`auth()->id()`).
 
-Never sent: e-mail addresses or names, request bodies, headers, cookies, IP addresses, or the query string. The message is redacted before it leaves: the base path is stripped, `Bearer` tokens and values after `password`, `token`, `secret`, `api_key`, `authorization` or `credential` become `[redacted]`, and so do e-mail addresses. HQ scrubs again on arrival.
+Never sent: e-mail addresses or names, request bodies, headers, cookies, IP addresses, the query string, or the value of a route parameter whose name contains `token`, `code`, `hash`, `signature`, `secret`, `key` or `password` (any case: `{joinCode}`, `{reset_token}`), or whose implicit binding field does (`{invitation:token}`). A password reset token, an invite code or an e-mail verification hash in the path becomes `[redacted]`; the route pattern still shows which route it was. Change the list with config `secret_route_parameters`. A parameter that can hold several segments is masked whole, whatever its name, because the server cannot know what it carries: `Route::fallback`, an SPA shell such as `Route::get('{any}')->where('any', '.*')`, a global `Route::pattern()` that allows `/` (`https://shop.test/[redacted]`). An error thrown before routing (in a global middleware) is masked against the route the request would have matched; when none matches, only the site root is sent. When masking fails, or a secret is a domain parameter, the event goes without a URL rather than with the secret. The message is redacted before it leaves: the base path is stripped, the user and password of any URL (`postgres://[redacted]@db/app`, `redis://[redacted]@cache`), `Bearer` tokens and values after `password`, `token`, `secret`, `signature`, `otp`, `api_key`, `authorization` or `credential` (also quoted as `` `password` `` or `[token]`, and written `key => value` as `print_r` and `var_export` do) become `[redacted]`, and so do e-mail addresses; if a pattern cannot run, the whole message becomes `[redacted]`. A database error (`QueryException`, also when a Blade or Livewire view wraps it in a `ViewException`) is sent without its binding values and without the database host, port and name: its message is rebuilt from the driver's message and the SQL as written (`where `remember_token` = ? limit 1`), and the values a driver echoes back (`Duplicate entry '...'`, `Key (code)=(...)`, also on an expression index such as `Key (lower(code::text))=(...)`, `Failing row contains (...)` even when a value spans lines, `invalid input syntax for type uuid: "..."`, `Incorrect integer value: '...'`) become `[redacted]`. Only the first 16 KB of the driver's message is read; the rest becomes `[redacted]`. HQ scrubs again on arrival.
+
+## Upgrading to 0.3
+
+1. Set `"brigada/hq-sdk": "^0.3"` in `composer.json` and run `composer update brigada/hq-sdk`.
+2. If you have `config/hq.php`, it is now used. Before 0.3.0 it was ignored whenever `BRIGADA_HQ_KEY` was set. Compare it with
+   `vendor/brigada/hq-sdk/config/hq.php`, or re-publish it with `php artisan vendor:publish --tag=hq-config --force` and re-apply your edits.
+3. Check `'queue'`. If it reads `env('BRIGADA_HQ_QUEUE', true)` and no worker always runs, set `BRIGADA_HQ_QUEUE=false` or change the
+   default to `false`: otherwise every error waits in a queue nobody works. If you miss this, the first error queued under such a file
+   writes one warning a day to your app's log (`Brigada HQ: errors are queued ...`); sending is not changed. Re-publishing the file, or
+   a connection of `sync`, stops it.
+4. Optional: `'secret_route_parameters'`. A list of your own replaces the defaults (token, code, hash, signature, secret, key, password;
+   matched as substrings). To extend it: `array_merge(\Brigada\Hq\Support\SecretPath::DEFAULT_NAMES, [...])`.
+5. URLs on secret routes, catch-all and fallback routes are now masked, and errors thrown before routing send the masked URL or the
+   site root. `@brigadaHqScript` browser errors send the server-masked URL on the page first loaded, and the origin only after
+   client-side navigation; frames of inline scripts and `onclick=` handlers no longer carry the page path.
+6. Database errors no longer carry SQL binding values or the database host, port and name. Expect one new HQ group per known database
+   error right after the upgrade.
+7. If you cache config, run `php artisan config:cache` again on deploy.
+8. Run `php artisan hq:test` and read any warning it prints.
 
 ## Migrating from Guardian
 

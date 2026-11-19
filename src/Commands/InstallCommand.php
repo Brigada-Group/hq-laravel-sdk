@@ -2,6 +2,7 @@
 
 namespace Brigada\Hq\Commands;
 
+use Brigada\Hq\Support\ConfigCheck;
 use Illuminate\Console\Command;
 
 class InstallCommand extends Command
@@ -12,7 +13,14 @@ class InstallCommand extends Command
 
     public function handle(): int
     {
+        $existing = is_file(config_path('hq.php'));
         $this->call('vendor:publish', ['--tag' => 'hq-config']);
+        if ($existing) {
+            $this->line('Note: kept your existing config/hq.php. Compare it with vendor/brigada/hq-sdk/config/hq.php (it is used from 0.3.0 on), or re-publish with php artisan vendor:publish --tag=hq-config --force.');
+        }
+        foreach (ConfigCheck::warnings() as $warning) {
+            $this->warn($warning);
+        }
         $this->newLine();
         $this->line('Add these to .env (the keys are in HQ: Project > Errors > Connect an app):');
         $this->newLine();

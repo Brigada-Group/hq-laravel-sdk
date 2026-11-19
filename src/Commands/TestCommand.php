@@ -3,6 +3,7 @@
 namespace Brigada\Hq\Commands;
 
 use Brigada\Hq\Hq;
+use Brigada\Hq\Support\ConfigCheck;
 use Brigada\Hq\Support\EventBuilder;
 use Illuminate\Console\Command;
 
@@ -24,6 +25,11 @@ class TestCommand extends Command
             throw new \RuntimeException('Brigada HQ test exception: safe to ignore or close');
         } catch (\Throwable $e) {
             $delivery = $hq->sendNow(EventBuilder::error($e));
+        }
+
+        // hq:test sends at once, so it says Sent even when real errors would wait in a queue: say what could lose them.
+        foreach (ConfigCheck::warnings() as $warning) {
+            $this->warn($warning);
         }
 
         if ($delivery->ok()) {
